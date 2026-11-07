@@ -1,7 +1,5 @@
-# ODPSHA
-The code for Orientation-Dependent Probabilistic Seismic Hazard Analysis based on Stochastic Summation of Empirical Green’s Function Simulations
 # Orientation-Dependent Probabilistic Seismic Hazard Analysis Using Empirical Green's Functions
-
+The code for Orientation-Dependent Probabilistic Seismic Hazard Analysis based on Stochastic Summation of Empirical Green’s Function Simulations
 The seven scripts construct earthquake scenarios from potential seismic source zones and magnitude bins, use empirical Green's functions (EGFs) to simulate paired horizontal ground motions, and calculate annual exceedance rates for fixed geographic azimuths and RotD measures. Step 7 extracts return-period intensities and disaggregates hazard by scenario and direction.
 
 ## Directory and execution order
@@ -18,31 +16,13 @@ rotd-psha/
   README.md
 ```
 
-Keep all seven scripts in the same directory. The workflow was verified with Python 3.13. Run this command in Windows PowerShell to install the dependencies.
+Keep all seven scripts in the same directory. The workflow was verified with Python 3.13. Run this command in Anaconda to install the dependencies.
 
 ```powershell
 python -m pip install "h5py>=3.10,<4" "numba>=0.61,<0.66" "numpy>=1.26,<2.5" "openpyxl>=3.1,<4" "pandas>=2.1,<4" "pyproj>=3.6,<4" "scipy>=1.11,<2" "shapely>=2.0,<3"
 ```
 
-Prepare a project JSON file using the input specifications below. In these commands, `project.json` is the path to that file. Use the same configuration for all seven steps.
 
-```powershell
-python step01_scenarios.py project.json
-python step02_stf.py project.json
-python step03_egf.py project.json
-python step04_simulation.py project.json
-python step05_intensity.py project.json
-python step06_hazard.py project.json
-python step07_postprocess.py project.json
-```
-
-Steps 2 and 3 both read the scenario table from step 1 and can run in either order. Step 4 combines their outputs, and step 5 reads the resulting ground motions. Step 6 combines the scenario occurrence rates from step 1 with the intensity samples from step 5. Optional step 7 reads the empirical curves from step 6 and the same intensity archives. All scripts process sites, scenarios, and samples serially.
-
-Paths in the project JSON are relative to the **directory containing the JSON file**. Waveform and site spectrum paths in a CSV are relative to the **directory containing that CSV**. Steps 2–5 each write a `manifest.csv` that identifies their output archives. Archive paths in a manifest are relative to its directory. Set a separate `output_dir` for each model or site batch.
-
-The project configuration requires `output_dir`, `dt_s`, and `acceleration_unit`. Use WGS84 longitude and latitude in degrees, sampling intervals in seconds, and frequencies in hertz. The scripts preserve the input acceleration unit. Use the same unit for waveforms, PGA, Sa, and hazard thresholds. When changing units, convert the thresholds along with the waveform or intensity measure (IM) inputs. Event and station identifiers are read as strings to preserve leading zeros.
-
-To reuse existing IM archives, set `legacy_im_dir` and run steps 1 and 6, followed by step 7 if needed. To regenerate ground motions from existing source time functions (STFs) and transferred EGFs, set `legacy_stf_dir` and `legacy_egf_dir` and run steps 1–6. Leave `legacy_im_dir` unset to use the newly generated IM manifest in step 6.
 
 ## 1. Construct earthquake scenarios
 
