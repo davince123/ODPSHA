@@ -16,13 +16,31 @@ rotd-psha/
   README.md
 ```
 
-Keep all seven scripts in the same directory. The workflow was verified with Python 3.13. Run this command in Anaconda to install the dependencies.
+Keep all seven scripts in the same directory. The workflow was verified with Python 3.13. Run this command in Windows PowerShell to install the dependencies.
 
 ```powershell
 python -m pip install "h5py>=3.10,<4" "numba>=0.61,<0.66" "numpy>=1.26,<2.5" "openpyxl>=3.1,<4" "pandas>=2.1,<4" "pyproj>=3.6,<4" "scipy>=1.11,<2" "shapely>=2.0,<3"
 ```
 
+Prepare a project JSON file using the input specifications below. In these commands, `project.json` is the path to that file. Use the same configuration for all seven steps.
 
+```powershell
+python step01_scenarios.py project.json
+python step02_stf.py project.json
+python step03_egf.py project.json
+python step04_simulation.py project.json
+python step05_intensity.py project.json
+python step06_hazard.py project.json
+python step07_postprocess.py project.json
+```
+
+Steps 2 and 3 both read the scenario table from step 1 and can run in either order. Step 4 combines their outputs, and step 5 reads the resulting ground motions. Step 6 combines the scenario occurrence rates from step 1 with the intensity samples from step 5. Optional step 7 reads the empirical curves from step 6 and the same intensity archives. All scripts process sites, scenarios, and samples serially.
+
+Paths in the project JSON are relative to the **directory containing the JSON file**. Waveform and site spectrum paths in a CSV are relative to the **directory containing that CSV**. Steps 2–5 each write a `manifest.csv` that identifies their output archives. Archive paths in a manifest are relative to its directory. Set a separate `output_dir` for each model or site batch.
+
+The project configuration requires `output_dir`, `dt_s`, and `acceleration_unit`. Use WGS84 longitude and latitude in degrees, sampling intervals in seconds, and frequencies in hertz. The scripts preserve the input acceleration unit. Use the same unit for waveforms, PGA, Sa, and hazard thresholds. When changing units, convert the thresholds along with the waveform or intensity measure (IM) inputs. Event and station identifiers are read as strings to preserve leading zeros.
+
+To reuse IM archives with azimuths measured clockwise from north, set `legacy_im_dir` and run steps 1 and 6, followed by step 7 if needed. To regenerate ground motions from existing source time functions (STFs) and transferred EGFs, set `legacy_stf_dir` and `legacy_egf_dir` and run steps 1–6. Leave `legacy_im_dir` unset to use the newly generated IM manifest in step 6.
 
 ## 1. Construct earthquake scenarios
 
@@ -58,7 +76,9 @@ This step reads `scenarios.csv` from step 1. Choose one of the following STF inp
 | `legacy_res_point_csv` | A headerless matrix of corner frequencies with one column per magnitude. The default column order is ascending magnitude. Set `stf.res_point_magnitudes` to specify the order explicitly. |
 | `legacy_stf_dir` | Existing files at `<event_id>/<mw>/<sample_id>/STF0.txt`. The script reads the target corner frequency and sampling interval from the header, then reads the STF pulse sequence. |
 
-To generate an STF, the script synthesizes pulses using two stages of stochastic delays. By default, it screens candidates against the measured EGF corner frequency and uses `exp(−0.923669 × egf_mw + 4.292291)` as the EGF corner frequency for synthesis. Set `stf.egf_fc_model` to `measured` to use the measured value for both operations. The target magnitude must exceed the EGF magnitude by more than 0.1. The target corner frequency must be below the measured EGF value and at most equal to the EGF value used for synthesis. `stf.seed` sets the random seed, and `stf.delay_repetitions` sets the number of independent delay samples per corner frequency.
+The target magnitude must exceed the EGF magnitude by **strictly more than 0.5** for both generated and imported STFs.
+
+To generate an STF, the script synthesizes pulses using two stages of stochastic delays. By default, it screens candidates against the measured EGF corner frequency and uses `exp(−0.923669 × egf_mw + 4.292291)` as the EGF corner frequency for synthesis. Set `stf.egf_fc_model` to `measured` to use the measured value for both operations. The target corner frequency must be below the measured EGF value and at most equal to the EGF value used for synthesis. `stf.seed` sets the random seed, and `stf.delay_repetitions` sets the number of independent delay samples per corner frequency.
 
 The outputs are `02_stf/<event_id>/<mw>.h5` and `02_stf/manifest.csv`. Sample weights are normalized within each scenario.
 
@@ -86,7 +106,7 @@ The script applies the same complex transfer function to both components of each
 | `egf` key | Default | Meaning |
 | --- | --- | --- |
 | `nearest_donors` | `5` | Maximum number of reference stations per site and event. |
-| `max_event_distance_km` | `500` | Maximum distance from the source to the target site. |
+| `max_event_distance_km` | `250` | Maximum distance from the source to the target site. |
 | `direct_tolerance_km` | `0.001` | Distance tolerance for matching a station to a colocated target site. |
 | `velocity_ratio` | `0.8` | Ratio of small-earthquake rupture speed to shear-wave speed. |
 | `small_event_rupture_azimuth_deg` | `0` | Small-earthquake rupture azimuth, measured clockwise from north. |
@@ -119,27 +139,27 @@ The outputs are `04_motion/<site_id>/<mw>/<event_id>/motion.h5` and `04_motion/m
 
 ## 5. Calculate rotational intensity measures
 
-This step reads the step 4 manifest and motion archives. It computes PGA and Sa at 1° intervals from 0° through 179° using the E and N components. The script uses Newmark integration to calculate the **absolute acceleration response spectrum**. The defaults are 5% damping and periods of 0.5 s and 2.0 s. Set `intensity.periods_s` and `intensity.damping` to change these values.
+This step reads the step 4 manifest and motion archives. It computes PGA and Sa at 1° intervals from 0° through 179°, measured **clockwise from north**. The script uses Newmark integration to calculate the **absolute acceleration response spectrum**. The defaults are 5% damping and periods of 0.5 s and 2.0 s. Set `intensity.periods_s` and `intensity.damping` to change these values.
 
-The raw rotation angle `α` follows `a(α) = E cos α + N sin α`. The corresponding geographic axis azimuth, measured clockwise from north, is `(90 − α) mod 180`. For example, geographic azimuth 145° corresponds to raw angle 125° in the HDF5 archive.
+For geographic azimuth `θ`, the script rotates the horizontal components directly as `a(θ) = N cos θ + E sin θ`. At 0° the result is the north component, and at 90° it is the east component. Geographic azimuth 145° is stored as 145°.
 
-The outputs are `05_im/<site_id>/<mw>/<event_id>/RotD_IM.h5` and `05_im/manifest.csv`. The `PGA` dataset has dimensions angle × sample, and `Sa` has dimensions angle × period × sample. The archive also stores `angles_deg`, `periods`, `record_names`, and `weights`.
+The outputs are `05_im/<site_id>/<mw>/<event_id>/RotD_IM.h5` and `05_im/manifest.csv`. The `PGA` dataset has dimensions azimuth × sample, and `Sa` has dimensions azimuth × period × sample. The archive stores the azimuths in `angles_deg` and identifies their convention with the root attribute `angle_convention=clockwise_from_north`. It also stores `periods`, `record_names`, and `weights`.
 
 ### Implementation
 
 - `periods()` checks that the periods are positive and strictly increasing. `newmark_constants()` computes the integration coefficients from the period, damping ratio, and time step using β = 0.25 and γ = 0.5.
 - `rotd_pga_and_sa_numba()` forms the acceleration time series at each angle and takes its peak absolute value as PGA. For each period, it starts from zero relative displacement and velocity, advances the relative motion in time, and takes the maximum absolute value of relative acceleration plus ground acceleration as Sa.
-- `run()` reads each paired record from step 4 and preserves its sample weight. `write_im()` stores the IM arrays. When `intensity.int16` is enabled, it stores a `scale` attribute for each array. Step 6 uses the raw angle index corresponding to the requested geographic azimuth. [step05_intensity.py](step05_intensity.py)
+- `run()` reads each paired record from step 4 and preserves its sample weight. `write_im()` stores the IM arrays. When `intensity.int16` is enabled, it stores a `scale` attribute for each array. Steps 6 and 7 use the stored azimuths directly. [step05_intensity.py](step05_intensity.py)
 
 ## 6. Integrate hazard curves
 
-This step reads the scenario table from step 1, the target site table, and the IM archives from step 5. Alternatively, set `legacy_im_dir` to read existing archives at `<site_id>/<mw>/<event_id>/RotD_IM.h5`. Integer PGA and Sa are restored by multiplying by the dataset's `scale` attribute. Archives without sample weights are treated as equally weighted.
+This step reads the scenario table from step 1, the target site table, and the IM archives from step 5. Alternatively, set `legacy_im_dir` to read existing archives at `<site_id>/<mw>/<event_id>/RotD_IM.h5`. The script requires the `clockwise_from_north` angle convention. For archives using a different convention, regenerate the IMs from paired ground motions with step 5. Integer PGA and Sa are restored by multiplying by the dataset's `scale` attribute. Archives without sample weights are treated as equally weighted.
 
 Set `hazard.im_grid` to `[minimum, maximum, number of levels]` and `hazard.fixed_azimuths_deg` to the desired integer geographic azimuths. RotD00, RotD50, and RotD100 are the minimum, median, and maximum across rotation angles for each sample. The empirical method adds the weights of samples strictly above the threshold within each scenario, multiplies by the scenario's annual occurrence rate, and sums across scenarios. The lognormal method estimates the mean and standard deviation of natural-log IM values within each scenario. It uses `ddof=1` for equally weighted samples. When there are too few samples, any zero IM values, or zero variance, the script uses empirical exceedance for that scenario and intensity series and records the fallback count.
 
 The default grid is `[0.0001, 10.0, 2000]`, and the default fixed azimuths span 0° to 179°. `hazard.method` accepts `empirical`, `lognormal`, or `both`. The default is `both`.
 
-The curves are written to `06_hazard/<site_id>/<IM>_empirical.csv` and/or `<IM>_lognormal.csv`. The first column, `im_level`, gives the intensity threshold. The remaining columns give annual exceedance rates in yr⁻¹. By default, a missing scenario with a positive occurrence rate raises an error. Set `hazard.allow_missing` to `true` to integrate the available archives using the scenario weights from step 1. `coverage.csv` identifies missing scenarios, and `coverage_summary.csv` reports the total and included occurrence rates.
+The curves are written to `06_hazard/<site_id>/<IM>_empirical.csv` and/or `<IM>_lognormal.csv`. The first column, `im_level`, gives the intensity threshold. The remaining columns give annual exceedance rates in yr⁻¹. By default, a positive-rate scenario without an eligible IM archive raises an error. Set `hazard.allow_missing` to `true` to integrate only eligible scenarios with available archives, using their scenario weights from step 1. In `coverage.csv`, `magnitude_eligible` indicates whether the scenario meets the 0.5 magnitude-difference criterion, and `available` indicates whether that eligible scenario has an IM archive. `coverage_summary.csv` reports the total and included occurrence rates.
 
 ### Implementation
 
@@ -150,9 +170,9 @@ The curves are written to `06_hazard/<site_id>/<IM>_empirical.csv` and/or `<IM>_
 
 ## 7. Extract return levels and disaggregate hazard by direction
 
-This optional step reads the empirical hazard curves from step 6 along with the same site table, scenario table, and IM archives. Set `postprocess.return_periods_years` to the desired return periods. The script selects the intensity grid point whose annual exceedance rate is closest to `1/T` and flags any target rate outside the curve's range. For RotD100, `postprocess.window_indices` sets the number of grid points on either side of the target intensity. The script weights samples in that window by annual occurrence rate, calculates each scenario's contribution, and fits an axial von Mises distribution to their directions. 
+This optional step reads the empirical hazard curves from step 6 along with the same site table, scenario table, and IM archives. Set `postprocess.return_periods_years` to the desired return periods. The script selects the intensity grid point whose annual exceedance rate is closest to `1/T` and flags any target rate outside the curve's range. For RotD100, `postprocess.window_indices` sets the number of grid points on either side of the target intensity. The script weights samples in that window by annual occurrence rate, calculates each scenario's contribution, and fits an axial von Mises distribution using the geographic azimuths stored in the IM archives.
 
-The default return periods are `[50, 475, 2500]` years, the default window half-width is 50 grid points, and the default angle convention is `geographic`.
+The default return periods are `[50, 475, 2500]` years. The default window half-width is 50 grid points. Reported directions are measured clockwise from north.
 
 The outputs in `07_postprocess/` are `return_levels.csv`, which includes site coordinates for mapping, `disaggregation.csv`, `direction_summary.csv`, and `direction_pdf.csv`.
 
@@ -161,3 +181,14 @@ The outputs in `07_postprocess/` are `return_levels.csv`, which includes site co
 - `read_targets()` extracts the grid intensity for each return period from each empirical hazard curve. It records `outside_grid` when the target exceedance rate lies outside the range covered by the curve.
 - `run()` selects RotD100 samples strictly between the window boundaries. Each sample contributes its scenario's annual occurrence rate multiplied by its sample weight. A scenario's `fraction` is its contribution divided by the total contribution within the window. A sample's direction is the first rotation angle at which its IM reaches its maximum.
 - `axial_fit()` computes the weighted circular mean of the doubled angles and halves the resulting angle to obtain the mean axis `mu_deg`. It uses the mean resultant length to estimate the concentration `kappa`. `axial_density()` returns a probability density per degree and uses finer angle spacing around narrow peaks. The summary records `empty_window` when the window contains no samples. [step07_postprocess.py](step07_postprocess.py)
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| A step cannot find a manifest or archive | Check that the preceding step ran with the same configuration. Verify `output_dir` and the site, event, and magnitude directories. |
+| Scenario weight validation fails | Check the event table, weight table, and occurrence rates by `zone_id`. The weights must sum to one within each zone. |
+| Step 6 reports missing scenarios | Check `magnitude_eligible` and `available` in `coverage.csv`. For eligible scenarios, verify that step 2 has usable STFs, step 3 has paired EGFs, or the input IM archive contains the combination. |
+| Step 6 rejects an archive's angle convention | Regenerate the IMs from paired ground motions with step 5 to store azimuths clockwise from north. |
+| Step 7 cannot find empirical curves | Set `hazard.method` to `empirical` or `both` and rerun step 6 with the same configuration. |
+| Step 7 reports `outside_grid` | Check the acceleration unit, intensity grid limits, and target return period. |
