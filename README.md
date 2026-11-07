@@ -150,7 +150,7 @@ The curves are written to `06_hazard/<site_id>/<IM>_empirical.csv` and/or `<IM>_
 
 ## 7. Extract return levels and disaggregate hazard by direction
 
-This optional step reads the empirical hazard curves from step 6 along with the same site table, scenario table, and IM archives. Set `postprocess.return_periods_years` to the desired return periods. The script selects the intensity grid point whose annual exceedance rate is closest to `1/T` and flags any target rate outside the curve's range. For RotD100, `postprocess.window_indices` sets the number of grid points on either side of the target intensity. The script weights samples in that window by annual occurrence rate, calculates each scenario's contribution, and fits an axial von Mises distribution to their directions. Set `postprocess.angle_convention` to `legacy_pdf` to use the folded-angle convention `−abs(90 − α) mod 180`.
+This optional step reads the empirical hazard curves from step 6 along with the same site table, scenario table, and IM archives. Set `postprocess.return_periods_years` to the desired return periods. The script selects the intensity grid point whose annual exceedance rate is closest to `1/T` and flags any target rate outside the curve's range. For RotD100, `postprocess.window_indices` sets the number of grid points on either side of the target intensity. The script weights samples in that window by annual occurrence rate, calculates each scenario's contribution, and fits an axial von Mises distribution to their directions. 
 
 The default return periods are `[50, 475, 2500]` years, the default window half-width is 50 grid points, and the default angle convention is `geographic`.
 
