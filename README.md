@@ -54,7 +54,7 @@ This step reads `scenarios.csv` from step 1. Choose one of the following STF inp
 
 The target magnitude must exceed the EGF magnitude by **strictly more than 0.5** for both generated and imported STFs.
 
-To generate an STF, the script synthesizes pulses using two stages of stochastic delays. By default, it screens candidates against the measured EGF corner frequency and uses `exp(−0.923669 × egf_mw + 4.292291)` as the EGF corner frequency for synthesis. Set `stf.egf_fc_model` to `measured` to use the measured value for both operations. The target corner frequency must be below the measured EGF value and at most equal to the EGF value used for synthesis. `stf.seed` sets the random seed, and `stf.delay_repetitions` sets the number of independent delay samples per corner frequency.
+To generate an STF, the script synthesizes pulses using two stages of stochastic delays.  Set `stf.egf_fc_model` to `measured` to use the measured value for both operations. The target corner frequency must be below the measured EGF value and at most equal to the EGF value used for synthesis. `stf.seed` sets the random seed, and `stf.delay_repetitions` sets the number of independent delay samples per corner frequency.
 
 The outputs are `02_stf/<event_id>/<mw>.h5` and `02_stf/manifest.csv`. Sample weights are normalized within each scenario.
 
